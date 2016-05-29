@@ -10,6 +10,7 @@ class Db
 		@DB = Sequel.connect('sqlite://data.db')
 		@etas = @DB[:etas] # eta records
 		@tweetids = @DB[:tweet_ids] # keep track of the max_id of the timeline
+		#@crashes = @DB[:crashes]
 	end
 
 	def addLastTweetId(time, tweet_id)
@@ -42,12 +43,32 @@ class Db
 		@tweetids.insert(:time => time, :tweet_id => tweet_id)
 	end
 
-	def add(record)
+	def addEta(record)
 		begin
 			@etas.insert(:time => record.time, :suburb => record.suburb, :eta => record.eta)
 		rescue Sequel::DatabaseError
 			puts "Cannot find etas table so rebuilding from scratch"
 			newEtasTable(record)
+		end
+	end
+
+	def newCrashTable(record) 
+		@DB.create_table :crashes do
+			primary_key :id
+			String :time # 
+			String :highway # SH1 or SH2
+		end
+		
+		@crashes = @DB[:crashes]
+		@crashes.insert(:time => record.time, :highway => record.highway)	
+	end
+
+	def addCrash(record)
+		begin
+			@crashes.insert(:time => record.time, :highway => record.highway)
+		rescue
+			puts "Cannot find crashes table so rebuilding from scratch"
+			newCrashTable(record)
 		end
 	end
 
@@ -63,11 +84,11 @@ class Db
 		@etas.insert(:time => record.time, :suburb => record.suburb, :eta => record.eta)
 	end
 
-	def deleteAll()
+	def deleteAllEtas()
 		@etas.delete
 	end
 
-	def getAll()
+	def getAllEtas()
 		@etas.all
 	end
 

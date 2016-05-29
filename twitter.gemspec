@@ -32,4 +32,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "oauth", "~> 0.5.1"
   spec.add_development_dependency "sequel", "~> 4.34.0"
   spec.add_development_dependency "sqlite3", "~> 1.3.11"
+  spec.add_development_dependency "pry"
 end

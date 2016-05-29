@@ -1,5 +1,6 @@
 require "twitter/version"
-# script to scrape the NZTA WGTN twitter feed for rush hour ETA data 
+
+# scrape the NZTA WGTN twitter feed for rush hour ETA data 
 # and store in sqlite3 database
 
 module Twitter
@@ -10,11 +11,14 @@ module Twitter
 	require 'eta'
 	require 'sequel'
 	require 'db'
+	require 'crash'
 	require 'optparse'
+	require 'pry'
 
-	options = {:scrapes => nil}
 	Data = Db.new
-	@etas = Array.new
+
+	@@etas = Array.new
+	@@crashes = Array.new
 	@auth = File.new("auth.json", "r")
 
 	def Twitter.query_twitter(max_id) # get tweets
@@ -23,13 +27,13 @@ module Twitter
 		unless max_id == nil
 			query   = URI.encode_www_form(
 		    	"screen_name" => "nztawgtn",
-		    	"count" => 3200,
+		    	"count" => 400,
 		    	"max_id" => max_id,
 			)
 		else
 			query   = URI.encode_www_form(
 		    	"screen_name" => "nztawgtn",
-		    	"count" => 3200,
+		    	"count" => 400,
 			)
 		end
 		address = URI("#{baseurl}#{path}?#{query}")
@@ -62,66 +66,63 @@ module Twitter
 		lines.drop(1).each do |line|
 			if /Manor Park/.match(line)
 				words = line.split()
-				@etas << Eta.new(time, "Manor Park", words[2])
+				@@etas << Eta.new(time, "Manor Park", words[2])
 			else
-				words = line.split()
-				@etas << Eta.new(time, words[0], words[1])
+				words = line.split()	
+				begin
+					@@etas << Eta.new(time, words[0].include?('’') ? words[0].delete('’') : words[0], words[1])
+				rescue
+					puts "Reached maximum number of tweets allowed to scrape (3200)"
+				end
+
 			end
 		end
+	end
+
+	def Twitter.process_crash(text, time)
+		#t = Time.parse(time)
+		begin
+			match = /(SH1|SH2)/.match(text)
+			highway = match[0]
+			@@crashes << Crash.new(time, highway)
+		rescue
+
+		end	
 	end
 
 	def Twitter.process_tweet(tweet)
-		if /[0-1]?[0-9]:[0-9]{2}(am)?(pm)?( ETAs)/.match(tweet["text"])
-			lines = tweet["text"].split("\n")
+		lines = tweet["text"].split("\n")
+		if /[0-1]?[0-9]:[0-9]{2}(am)?(pm)?( ETAs)/.match(lines[0])
 			process_eta(lines, (Time.parse(tweet["created_at"]) + 12 * 60 * 60).to_s)
 		end
-	end
-	
-	parser = OptionParser.new do |opts|
-		opts.banner = "Usage: twitter.rb [options]"
-		opts.on("-s s", "--scrapes=s", "number of scrapes to perform") do |scrapes|
-			options[:scrapes] = scrapes
-		end 
-		opts.on("-h", "--help", "Displays help") do
-			puts opts
-			exit
+		if /^((CRASH)|(Crash)|(crash)).*((SH2)|(SH1))/.match(tweet["text"])
+			# keep track of crashes
+			process_crash(tweet["text"], (Time.parse(tweet["created_at"]) + 12 * 60 * 60).to_s)
 		end
 	end
 
-	parser.parse! # parse command line options
-
-	# Parse and print the Tweet if the response code was 200
-	unless options[:scrapes] == nil
-		(1..options[:scrapes].to_i).each do 
-			tweets = query_twitter(Data.getLastTweetId)
-			puts tweets.count
-			@etas.clear
-			tweets.each do |tweet|
-				process_tweet(tweet)
-			end
-
-			@etas.each do |eta|
-				Data.add(eta)
-			end
-
-			# add last tweet id to database
-			Data.addLastTweetId((Time.parse(tweets.last["created_at"]) + 12 * 60 * 60).to_s, tweets.last["id"])
-			puts Data.getLastTweetId()
-		end
-	else
+	def Twitter.scrape_tweets()
+		@@etas.clear
+		@@crashes.clear
 		tweets = query_twitter(Data.getLastTweetId)
-
+		puts tweets.count
 		tweets.each do |tweet|
 			process_tweet(tweet)
 		end
 
-		@etas.each do |eta|
-			Data.add(eta)
+		@@etas.each do |eta|
+			Data.addEta(eta)
 		end
+
+		unless @@crashes.count == 0
+			@@crashes.each do |crash|
+				Data.addCrash(crash)
+			end
+		end 
 
 		# add last tweet id to database
 		Data.addLastTweetId((Time.parse(tweets.last["created_at"]) + 12 * 60 * 60).to_s, tweets.last["id"])
-		puts "Last tweet ID in scrape: #{Data.getLastTweetId()}"
+		puts Data.getLastTweetId()
 	end
 	
 end
