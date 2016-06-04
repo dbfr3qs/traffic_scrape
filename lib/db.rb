@@ -10,7 +10,7 @@ class Db
 		@DB = Sequel.connect('sqlite://data.db')
 		@etas = @DB[:etas] # eta records
 		@tweetids = @DB[:tweet_ids] # keep track of the max_id of the timeline
-		#@crashes = @DB[:crashes]
+		@crashes = @DB[:crashes]
 	end
 
 	def addLastTweetId(time, tweet_id)
@@ -22,25 +22,45 @@ class Db
 		end
 	end
 
+	def addFirstAndLastTweetId(time, first_id, last_id)
+		begin
+			@tweetids.insert(:time => time, :first_id => first_id, :last_id => last_id)
+		rescue Sequel::DatabaseError
+			puts "Cannot find tweet_ids table so rebuilding from scratch"
+			newTweetsIdTable(time, first_id, last_id)
+		end
+	end
+
 	def getLastTweetId() # return the tweet id of the last tweet scraped
 		begin
 			record = @tweetids.order(:id).last
-			record[:tweet_id]
+			record[:last_id]
 		rescue Sequel::DatabaseError
 			puts "Tweets ID database does not yet exist"
 			return nil
 		end
 	end
 
-	def newTweetsIdTable(time, tweet_id)
+	def getFirstTweetId() 
+		begin
+			record = @tweetids.order(:first_id).last
+			record[:first_id]
+		rescue Sequel::DatabaseError
+			puts "Tweets ID database does not yet exist"
+			return nil
+		end
+	end
+
+	def newTweetsIdTable(time, first_id, last_id)
 		@DB.create_table :tweet_ids do
 			primary_key :id
 			String :time
-			Fixnum :tweet_id
+			Fixnum :first_id
+			Fixnum :last_id
 		end
 
 		@tweetids = @DB[:tweet_ids]
-		@tweetids.insert(:time => time, :tweet_id => tweet_id)
+		@tweetids.insert(:time => time, :first_id => first_id, :last_id => last_id)
 	end
 
 	def addEta(record)
@@ -66,7 +86,8 @@ class Db
 	def addCrash(record)
 		begin
 			@crashes.insert(:time => record.time, :highway => record.highway)
-		rescue
+		rescue Exception => e
+			puts e.message
 			puts "Cannot find crashes table so rebuilding from scratch"
 			newCrashTable(record)
 		end

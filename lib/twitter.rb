@@ -21,19 +21,24 @@ module Twitter
 	@@crashes = Array.new
 	@auth = File.new("auth.json", "r")
 
-	def Twitter.query_twitter(max_id) # get tweets
+	def Twitter.query_twitter(max_id=nil, since_id=nil) # get tweets
 		baseurl = "https://api.twitter.com"
 		path    = "/1.1/statuses/user_timeline.json"
-		unless max_id == nil
+		if max_id != nil
 			query   = URI.encode_www_form(
 		    	"screen_name" => "nztawgtn",
-		    	"count" => 400,
 		    	"max_id" => max_id,
+		    	"count" => 200,
+			)
+		elsif since_id != nil
+			query   = URI.encode_www_form(
+		    	"screen_name" => "nztawgtn",
+		    	"since_id" => since_id,
+		    	"count" => 200,
 			)
 		else
 			query   = URI.encode_www_form(
 		    	"screen_name" => "nztawgtn",
-		    	"count" => 400,
 			)
 		end
 		address = URI("#{baseurl}#{path}?#{query}")
@@ -91,20 +96,31 @@ module Twitter
 	end
 
 	def Twitter.process_tweet(tweet)
-		lines = tweet["text"].split("\n")
+		lines = tweet["text"].split("\n") 
 		if /[0-1]?[0-9]:[0-9]{2}(am)?(pm)?( ETAs)/.match(lines[0])
+			# process for ETAs
 			process_eta(lines, (Time.parse(tweet["created_at"]) + 12 * 60 * 60).to_s)
 		end
-		if /^((CRASH)|(Crash)|(crash)).*((SH2)|(SH1))/.match(tweet["text"])
+		if /^((CRASH)|(Crash)|(crash)|(BREAKDOWN)|(Breakdown)|(breakdown)).*((SH2)|(SH1))/.match(tweet["text"])
 			# keep track of crashes
 			process_crash(tweet["text"], (Time.parse(tweet["created_at"]) + 12 * 60 * 60).to_s)
 		end
 	end
 
-	def Twitter.scrape_tweets()
+	def Twitter.scrape_tweets(direction)
 		@@etas.clear
 		@@crashes.clear
-		tweets = query_twitter(Data.getLastTweetId)
+		if direction == "backwards"
+			#binding.pry
+			tweets = query_twitter(Data.getLastTweetId)
+		elsif direction == "forwards"
+			#binding.pry
+			tweets = query_twitter(nil, Data.getFirstTweetId)
+			#binding.pry
+		else
+			tweets = query_twitter()
+		end
+
 		puts tweets.count
 		tweets.each do |tweet|
 			process_tweet(tweet)
@@ -121,7 +137,8 @@ module Twitter
 		end 
 
 		# add last tweet id to database
-		Data.addLastTweetId((Time.parse(tweets.last["created_at"]) + 12 * 60 * 60).to_s, tweets.last["id"])
+		#Data.addLastTweetId((Time.parse(tweets.last["created_at"]) + 12 * 60 * 60).to_s, tweets.last["id"])
+		Data.addFirstAndLastTweetId((Time.now).to_s, tweets.first["id"], tweets.last["id"])
 		puts Data.getLastTweetId()
 	end
 	
