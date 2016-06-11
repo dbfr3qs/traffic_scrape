@@ -97,7 +97,7 @@ module Twitter
 
 	def Twitter.process_tweet(tweet)
 		lines = tweet["text"].split("\n") 
-		if /[0-1]?[0-9]:[0-9]{2}(am)?(pm)?( ETAs)/.match(lines[0])
+		if /[0-1]?[0-9]:[0-9]{2}(am)?(pm)?(( ETAs)|( #ETAs))/.match(lines[0])
 			# process for ETAs
 			process_eta(lines, (Time.parse(tweet["created_at"]) + 12 * 60 * 60).to_s)
 		end
